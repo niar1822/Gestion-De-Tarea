@@ -5,8 +5,7 @@ namespace TaksModels.Models
     public class Tarea<T>
     {
         public int Id { get; set; }
-
-        [Required]
+        public string Titulo { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
 
         [Required]
