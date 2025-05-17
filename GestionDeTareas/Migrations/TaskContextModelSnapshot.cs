@@ -47,6 +47,9 @@ namespace GestionDeTareas.Migrations
                     b.Property<string>("Titulo")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Tipo")
+                    .IsRequired()
+                    .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 

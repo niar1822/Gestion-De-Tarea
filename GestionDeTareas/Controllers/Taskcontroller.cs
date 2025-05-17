@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TaksModels.Models;
+using static GestionDeTareas.Factorymetho.GestionDeTareas;
 
 namespace GestionDeTareas.Controllers
 {
@@ -20,35 +21,66 @@ namespace GestionDeTareas.Controllers
             _Context = context;
         }
 
+
         [HttpPost]
         [Route("crear")]
-        public async Task<IActionResult> Creartarea(TaskData tarea)
+        public async Task<IActionResult> Creartarea(CrearDataRequest request)
         {
+            // Crear la tarea usando el Factory
+            var tareaGenerica = TareaFactory.Crear(
+                request.Tipo,
+                request.Titulo,
+                request.Description,
+                request.DueDate,
+                request.Status,
+                request.ExtraData
+            );
+
+            // Convertir a TaskData para guardar en la base de datos
+            var tarea = new TaskData
+            {
+                Titulo = tareaGenerica.Titulo,
+                Description = tareaGenerica.Description,
+                DueDate = tareaGenerica.DueDate,
+                Status = tareaGenerica.Status,
+                ExtraData = tareaGenerica.ExtraData.ToString()
+            };
+
+            // Delegados para validación
             ValidarCampo validarCampo = Validaciones.ValidarDescripcion;
             validarCampo += Validaciones.ValidarFecha;
-            int diasrestantes = Calculardias.CalcularDiasRestantes(tarea);
 
+            // Delegado para acciones post-guardado
+            Action<TaskData> accionespost = Acciones.NotificarCreacion;
+
+            // Ejecutar validaciones
             foreach (ValidarCampo item in validarCampo.GetInvocationList())
             {
                 if (!item(tarea))
                 {
-                    return BadRequest("Error en la validacion de los campos");
+                    return BadRequest("Error en la validación de los campos");
                 }
             }
+
+            // Guardar en la base de datos
             await _Context.Tasks.AddAsync(tarea);
             await _Context.SaveChangesAsync();
 
-            Action<TaskData> accionespost = Acciones.NotificarCreacion;
+            // Ejecutar acciones después de guardar
             accionespost(tarea);
 
             return Ok(new
             {
+                tarea.Titulo,
+                tarea.Description,
+                tarea.Status,
+                tarea.Tipo,
                 mensaje = "Tarea creada exitosamente",
-                diasrestantes = diasrestantes,
+                diasrestantes = Calculardias.CalcularDiasRestantes(tarea)
 
-            }
-            );
+            });
         }
+
 
         [HttpGet]
         [Route("listar")]
