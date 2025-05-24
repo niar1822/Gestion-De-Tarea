@@ -6,8 +6,13 @@ namespace GestionDeTareas.Models
     {
         object Itarea.ExtraData
         {
-            get => ExtraData;
-            set => ExtraData = value.ToString;
+            get => ExtraData!;
+            set => ExtraData = value.ToString();
+        }
+
+        public Task EjecutarAsync()
+        {
+            throw new NotImplementedException();
         }
     }
 }

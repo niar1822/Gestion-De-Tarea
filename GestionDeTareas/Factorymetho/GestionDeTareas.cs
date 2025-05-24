@@ -6,7 +6,7 @@ namespace GestionDeTareas.Factorymetho
     {
         public static class TareaFactory
         {
-            public static Itarea Crear(string tipo, string titulo, string descripcion, DateTime fecha, string estado, object extra)
+            public static Itarea Crear( string tipo, string titulo, string descripcion, DateTime fecha, string estado, object extra)
             {
                 return tipo.ToLower() switch
                 {
@@ -20,6 +20,7 @@ namespace GestionDeTareas.Factorymetho
                     },
                     "prioridad" => new TareaPrioridad
                     {
+                        
                         Titulo = titulo,
                         Description = descripcion,
                         DueDate = fecha,

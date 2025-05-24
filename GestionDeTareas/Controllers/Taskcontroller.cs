@@ -15,28 +15,28 @@ namespace GestionDeTareas.Controllers
     public class Taskcontroller : ControllerBase
     {
         private readonly TaskContext _Context;
+        private readonly TaskQueue _taskQueue;
 
-        public Taskcontroller(TaskContext context)
+        public Taskcontroller(TaskContext context, TaskQueue taskQueue)
         {
             _Context = context;
+            _taskQueue = taskQueue;
         }
-
 
         [HttpPost]
         [Route("crear")]
         public async Task<IActionResult> Creartarea(CrearDataRequest request)
         {
-            // Crear la tarea usando el Factory
             var tareaGenerica = TareaFactory.Crear(
+
                 request.Tipo,
-                request.Titulo,
-                request.Description,
+                request.Titulo!,
+                request.Description!,
                 request.DueDate,
-                request.Status,
-                request.ExtraData
+                request.Status!,
+                request.ExtraData!
             );
 
-            // Convertir a TaskData para guardar en la base de datos
             var tarea = new TaskData
             {
                 Titulo = tareaGenerica.Titulo,
@@ -45,15 +45,12 @@ namespace GestionDeTareas.Controllers
                 Status = tareaGenerica.Status,
                 ExtraData = tareaGenerica.ExtraData.ToString()
             };
-
-            // Delegados para validación
+            
             ValidarCampo validarCampo = Validaciones.ValidarDescripcion;
             validarCampo += Validaciones.ValidarFecha;
-
-            // Delegado para acciones post-guardado
+            
             Action<TaskData> accionespost = Acciones.NotificarCreacion;
 
-            // Ejecutar validaciones
             foreach (ValidarCampo item in validarCampo.GetInvocationList())
             {
                 if (!item(tarea))
@@ -62,11 +59,11 @@ namespace GestionDeTareas.Controllers
                 }
             }
 
-            // Guardar en la base de datos
             await _Context.Tasks.AddAsync(tarea);
             await _Context.SaveChangesAsync();
 
-            // Ejecutar acciones después de guardar
+            _taskQueue.Enqueue(tareaGenerica);
+
             accionespost(tarea);
 
             return Ok(new

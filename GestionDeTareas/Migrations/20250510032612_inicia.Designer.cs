@@ -13,7 +13,7 @@ namespace GestionDeTareas.Migrations
 {
     [DbContext(typeof(TaskContext))]
     [Migration("20250510032612_inicia")]
-    partial class inicia
+    partial class Inicia
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

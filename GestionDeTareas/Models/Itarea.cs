@@ -1,4 +1,6 @@
-﻿namespace GestionDeTareas.Models
+﻿
+
+namespace GestionDeTareas.Models
 {
     public interface Itarea
     {
@@ -8,5 +10,7 @@
         DateTime DueDate { get; set; }
         string Status { get; set; }
         object ExtraData { get; set; }
+
+        Task EjecutarAsync();
     }
 }

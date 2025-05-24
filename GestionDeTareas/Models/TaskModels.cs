@@ -20,6 +20,7 @@ namespace TaksModels.Models
 
     public class TaskData : Tarea<string> 
     {
+
     }
 
 }

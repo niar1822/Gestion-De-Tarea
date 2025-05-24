@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace GestionDeTareas.Migrations
 {
     /// <inheritdoc />
-    public partial class inicia : Migration
+    public partial class Inicia : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
