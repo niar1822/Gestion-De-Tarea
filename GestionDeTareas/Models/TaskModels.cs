@@ -22,5 +22,12 @@ namespace TaksModels.Models
     {
 
     }
+    public static class TareaExtensions
+    {
+        public static bool Completada<T>(this Tarea<T> tarea)
+        {
+            return tarea.Status.Equals("completada", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
 }

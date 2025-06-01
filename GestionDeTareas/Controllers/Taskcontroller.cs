@@ -61,6 +61,8 @@ namespace GestionDeTareas.Controllers
 
             await _Context.Tasks.AddAsync(tarea);
             await _Context.SaveChangesAsync();
+            MemoService<string>.LimpiarCache();
+
 
             _taskQueue.Enqueue(tareaGenerica);
 
@@ -89,6 +91,7 @@ namespace GestionDeTareas.Controllers
 
         [HttpGet]
         [Route("ver")]
+
         public async Task<IActionResult> VerTarea(int id)
         {
             var tarea = await _Context.Tasks.FindAsync(id);
@@ -98,6 +101,26 @@ namespace GestionDeTareas.Controllers
             }
             return Ok(tarea);
         }
+
+        [HttpGet]
+        [Route("obtenertareascompletadas")]
+        public async Task<IActionResult> ObtenerPorcentajeTareasCompletadas()
+        {
+            var tareas = await _Context.Tasks.ToListAsync();
+            double porcentaje = MemoService<string>.ObtenerPorcentajeCompletadas(tareas);
+            return Ok(new { porcentaje });
+        }
+
+        [HttpGet]
+        [Route("filtrarporestado")]
+        public async Task<IActionResult> FiltrarTareasPorEstado([FromQuery] string estado)
+        {
+            var tareas = await _Context.Tasks.ToListAsync();
+            var filtradas = MemoService<string>.FiltrarPorEstado(tareas, estado);
+            return Ok(filtradas);
+        }
+
+
 
         [HttpPut]
         [Route("editar")]
