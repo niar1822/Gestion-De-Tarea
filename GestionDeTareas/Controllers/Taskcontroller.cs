@@ -101,8 +101,32 @@ namespace GestionDeTareas.Controllers
             }
             return Ok(tarea);
         }
+        [ApiController]
+        [Route("api/[controller]")]
+        public class AuthController : ControllerBase
+        {
+            private readonly GeneradorDeToken _generadorToken;
 
-        [HttpGet]
+            public AuthController(GeneradorDeToken generadorToken)
+            {
+                _generadorToken = generadorToken;
+            }
+
+            [HttpPost("login")]
+            public IActionResult Login([FromBody] LoginModel login)
+            {
+                if (login.Username == "admin" && login.Password == "1234") // Cambiar por validación real
+                {
+                    var token = _generadorToken.GenerateJwtToken(login.Username);
+                    return Ok(new { token });
+                }
+
+                return Unauthorized();
+            }
+        }
+
+
+                [HttpGet]
         [Route("obtenertareascompletadas")]
         public async Task<IActionResult> ObtenerPorcentajeTareasCompletadas()
         {
