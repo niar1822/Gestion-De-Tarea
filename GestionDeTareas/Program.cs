@@ -1,8 +1,10 @@
 using System.Text;
+using GestionDeTareas.huds;
 using GestionDeTareas.Models;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer; 
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using TuProyecto.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,10 +41,16 @@ builder.Services.AddDbContext<TaskContext>(o =>
 {
     o.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
 });
+
+builder.Services.AddSignalR();
+// En Program.cs, después de AddSignalR()
+builder.Services.AddScoped<ITaskNotificationService, TaskNotificationService>();
+
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<TaskQueue>();
+
 
 var app = builder.Build();
 
@@ -55,7 +63,13 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.MapHub<TaskHub>("/taskHub");
+
 app.UseAuthorization();
+
+app.UseCors();
+
+app.UseAuthentication();
 
 app.MapControllers();
 

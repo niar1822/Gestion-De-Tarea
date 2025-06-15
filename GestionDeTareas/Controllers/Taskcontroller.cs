@@ -16,11 +16,13 @@ namespace GestionDeTareas.Controllers
     {
         private readonly TaskContext _Context;
         private readonly TaskQueue _taskQueue;
+        private readonly ITaskNotificationService _notificationService; // ← AGREGAR
 
-        public Taskcontroller(TaskContext context, TaskQueue taskQueue)
+        public Taskcontroller(TaskContext context, TaskQueue taskQueue, ITaskNotificationService notificationService) // ← MODIFICAR
         {
             _Context = context;
             _taskQueue = taskQueue;
+            _notificationService = notificationService; // ← AGREGAR
         }
 
         [HttpPost]
@@ -28,7 +30,6 @@ namespace GestionDeTareas.Controllers
         public async Task<IActionResult> Creartarea(CrearDataRequest request)
         {
             var tareaGenerica = TareaFactory.Crear(
-
                 request.Tipo,
                 request.Titulo!,
                 request.Description!,
@@ -45,10 +46,10 @@ namespace GestionDeTareas.Controllers
                 Status = tareaGenerica.Status,
                 ExtraData = tareaGenerica.ExtraData.ToString()
             };
-            
+
             ValidarCampo validarCampo = Validaciones.ValidarDescripcion;
             validarCampo += Validaciones.ValidarFecha;
-            
+
             Action<TaskData> accionespost = Acciones.NotificarCreacion;
 
             foreach (ValidarCampo item in validarCampo.GetInvocationList())
@@ -63,10 +64,20 @@ namespace GestionDeTareas.Controllers
             await _Context.SaveChangesAsync();
             MemoService<string>.LimpiarCache();
 
-
             _taskQueue.Enqueue(tareaGenerica);
-
             accionespost(tarea);
+
+            // ========== AGREGAR NOTIFICACIÓN SIGNALR ==========
+            await _notificationService.NotifyTaskCreated(new
+            {
+                Id = tarea.Id,
+                Titulo = tarea.Titulo,
+                Description = tarea.Description,
+                Status = tarea.Status,
+                DueDate = tarea.DueDate,
+                Mensaje = "Nueva tarea creada"
+            });
+            // ================================================
 
             return Ok(new
             {
@@ -76,10 +87,8 @@ namespace GestionDeTareas.Controllers
                 tarea.Tipo,
                 mensaje = "Tarea creada exitosamente",
                 diasrestantes = Calculardias.CalcularDiasRestantes(tarea)
-
             });
         }
-
 
         [HttpGet]
         [Route("listar")]
@@ -91,7 +100,6 @@ namespace GestionDeTareas.Controllers
 
         [HttpGet]
         [Route("ver")]
-
         public async Task<IActionResult> VerTarea(int id)
         {
             var tarea = await _Context.Tasks.FindAsync(id);
@@ -101,32 +109,8 @@ namespace GestionDeTareas.Controllers
             }
             return Ok(tarea);
         }
-        [ApiController]
-        [Route("api/[controller]")]
-        public class AuthController : ControllerBase
-        {
-            private readonly GeneradorDeToken _generadorToken;
 
-            public AuthController(GeneradorDeToken generadorToken)
-            {
-                _generadorToken = generadorToken;
-            }
-
-            [HttpPost("login")]
-            public IActionResult Login([FromBody] LoginModel login)
-            {
-                if (login.Username == "admin" && login.Password == "1234") // Cambiar por validación real
-                {
-                    var token = _generadorToken.GenerateJwtToken(login.Username);
-                    return Ok(new { token });
-                }
-
-                return Unauthorized();
-            }
-        }
-
-
-                [HttpGet]
+        [HttpGet]
         [Route("obtenertareascompletadas")]
         public async Task<IActionResult> ObtenerPorcentajeTareasCompletadas()
         {
@@ -144,20 +128,35 @@ namespace GestionDeTareas.Controllers
             return Ok(filtradas);
         }
 
-
-
         [HttpPut]
         [Route("editar")]
         public async Task<IActionResult> EditarTarea(int id, TaskData tarea)
         {
             var TareaExistente = await _Context.Tasks.FindAsync(id);
+            if (TareaExistente == null)
+            {
+                return NotFound();
+            }
 
-            TareaExistente!.Description = tarea.Description;
+            TareaExistente.Description = tarea.Description;
             TareaExistente.DueDate = tarea.DueDate;
             TareaExistente.Status = tarea.Status;
             TareaExistente.ExtraData = tarea.ExtraData;
 
             await _Context.SaveChangesAsync();
+
+            // ========== AGREGAR NOTIFICACIÓN SIGNALR ==========
+            await _notificationService.NotifyTaskUpdated(new
+            {
+                Id = TareaExistente.Id,
+                Titulo = TareaExistente.Titulo,
+                Description = TareaExistente.Description,
+                Status = TareaExistente.Status,
+                DueDate = TareaExistente.DueDate,
+                Mensaje = "Tarea actualizada"
+            });
+            // ================================================
+
             return Ok();
         }
 
@@ -170,9 +169,39 @@ namespace GestionDeTareas.Controllers
             {
                 return NotFound();
             }
+
             _Context.Tasks.Remove(tarea);
             await _Context.SaveChangesAsync();
+
+            // ========== AGREGAR NOTIFICACIÓN SIGNALR ==========
+            await _notificationService.NotifyTaskDeleted(id);
+            // ================================================
+
             return Ok();
+        }
+    }
+
+    // ========== MOVER AUTHCONTROLLER FUERA ==========
+    [ApiController]
+    [Route("api/[controller]")]
+    public class AuthController : ControllerBase
+    {
+        private readonly GeneradorDeToken _generadorToken;
+
+        public AuthController(GeneradorDeToken generadorToken)
+        {
+            _generadorToken = generadorToken;
+        }
+
+        [HttpPost("login")]
+        public IActionResult Login([FromBody] LoginModel login)
+        {
+            if (login.Username == "admin" && login.Password == "1234")
+            {
+                var token = _generadorToken.GenerateJwtToken(login.Username);
+                return Ok(new { token });
+            }
+            return Unauthorized();
         }
     }
 }
