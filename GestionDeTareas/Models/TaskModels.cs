@@ -1,4 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using GestionDeTareas.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace TaksModels.Models
 {
@@ -6,6 +8,7 @@ namespace TaksModels.Models
     {
         public int Id { get; set; }
         public string Tipo { get; set; } = "simple";
+
         public string Titulo { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
 

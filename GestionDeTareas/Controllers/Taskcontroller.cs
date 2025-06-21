@@ -1,28 +1,34 @@
 ﻿using System.ComponentModel;
 using System.Numerics;
+using System.Text;
 using GestionDeTareas.Helpers;
 using GestionDeTareas.Models;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TaksModels.Models;
 using static GestionDeTareas.Factorymetho.GestionDeTareas;
+using System.Security.Cryptography;
+using System.Security.Claims;
 
 namespace GestionDeTareas.Controllers
 {
-    [Route("api/[controller]")]
+
+    [Authorize] 
     [ApiController]
+    [Route("api/[controller]")]
     public class Taskcontroller : ControllerBase
     {
         private readonly TaskContext _Context;
         private readonly TaskQueue _taskQueue;
-        private readonly ITaskNotificationService _notificationService; // ← AGREGAR
+        private readonly ITaskNotificationService _notificationService;
 
-        public Taskcontroller(TaskContext context, TaskQueue taskQueue, ITaskNotificationService notificationService) // ← MODIFICAR
+        public Taskcontroller(TaskContext context, TaskQueue taskQueue, ITaskNotificationService notificationService)
         {
             _Context = context;
             _taskQueue = taskQueue;
-            _notificationService = notificationService; // ← AGREGAR
+            _notificationService = notificationService;
         }
 
         [HttpPost]
@@ -67,7 +73,10 @@ namespace GestionDeTareas.Controllers
             _taskQueue.Enqueue(tareaGenerica);
             accionespost(tarea);
 
-            // ========== AGREGAR NOTIFICACIÓN SIGNALR ==========
+            // Obtener info del usuario autenticado (solo ejemplo)
+            var nombreUsuario = User.Identity?.Name;
+            var email = User.FindFirst(ClaimTypes.Email)?.Value;
+
             await _notificationService.NotifyTaskCreated(new
             {
                 Id = tarea.Id,
@@ -75,9 +84,8 @@ namespace GestionDeTareas.Controllers
                 Description = tarea.Description,
                 Status = tarea.Status,
                 DueDate = tarea.DueDate,
-                Mensaje = "Nueva tarea creada"
+                Mensaje = $"Nueva tarea creada por {email}"
             });
-            // ================================================
 
             return Ok(new
             {
@@ -145,7 +153,6 @@ namespace GestionDeTareas.Controllers
 
             await _Context.SaveChangesAsync();
 
-            // ========== AGREGAR NOTIFICACIÓN SIGNALR ==========
             await _notificationService.NotifyTaskUpdated(new
             {
                 Id = TareaExistente.Id,
@@ -155,11 +162,9 @@ namespace GestionDeTareas.Controllers
                 DueDate = TareaExistente.DueDate,
                 Mensaje = "Tarea actualizada"
             });
-            // ================================================
 
             return Ok();
         }
-
         [HttpDelete]
         [Route("eliminar")]
         public async Task<IActionResult> EliminarTarea(int id)
@@ -173,35 +178,181 @@ namespace GestionDeTareas.Controllers
             _Context.Tasks.Remove(tarea);
             await _Context.SaveChangesAsync();
 
-            // ========== AGREGAR NOTIFICACIÓN SIGNALR ==========
             await _notificationService.NotifyTaskDeleted(id);
-            // ================================================
-
             return Ok();
         }
     }
 
-    // ========== MOVER AUTHCONTROLLER FUERA ==========
-    [ApiController]
+}
+
+// ========== MOVER AUTHCONTROLLER FUERA ==========
+[ApiController]
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
-        private readonly GeneradorDeToken _generadorToken;
+            private readonly TaskContext _context;
+            private readonly IJwtService _jwtService;
+            private readonly ILogger<AuthController> _logger;
 
-        public AuthController(GeneradorDeToken generadorToken)
-        {
-            _generadorToken = generadorToken;
-        }
-
-        [HttpPost("login")]
-        public IActionResult Login([FromBody] LoginModel login)
-        {
-            if (login.Username == "admin" && login.Password == "1234")
+            public AuthController(TaskContext context, IJwtService jwtService, ILogger<AuthController> logger)
             {
-                var token = _generadorToken.GenerateJwtToken(login.Username);
-                return Ok(new { token });
+                _context = context;
+                _jwtService = jwtService;
+                _logger = logger;
             }
-            return Unauthorized();
+
+            [HttpPost("login")]
+            public async Task<ActionResult<LoginResponse>> Login([FromBody] UserLoginRequest request)
+            {
+                try
+                {
+
+                    if (!ModelState.IsValid)
+                    {
+                        return BadRequest(ModelState);
+                    }
+
+                    // Buscar usuario por nombre de usuario
+                    var usuario = await _context.Usuarios
+                        .FirstOrDefaultAsync(u => u.NombreUsuario == request.NombreUsuario && u.Activo);
+
+                    if (usuario == null)
+                    {
+                        return Unauthorized(new { mensaje = "Credenciales inválidas" });
+                    }
+
+                    // Verificar contraseña
+                    if (!VerificarPassword(request.Password, usuario.PasswordHash))
+                    {
+                        return Unauthorized(new { mensaje = "Credenciales inválidas" });
+                    }
+
+                    // Generar token JWT
+                    var token = _jwtService.GenerarToken(usuario);
+                    var expiracion = DateTime.UtcNow.AddHours(24);
+
+                    var response = new LoginResponse
+                    {
+                        Token = token,
+                        NombreUsuario = usuario.NombreUsuario,
+                        Email = usuario.Email,
+                        Rol = usuario.Rol,
+                        Expiracion = expiracion
+                    };
+
+                    _logger.LogInformation($"Usuario {usuario.NombreUsuario} ha iniciado sesión exitosamente");
+
+                    return Ok(response);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error durante el login");
+                    return StatusCode(500, new { mensaje = "Error interno del servidor" });
+                }
+            }
+
+        [HttpPost("register")]
+        public async Task<ActionResult<LoginResponse>> Register([FromBody] UserRegisterRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            // Verificar si el usuario ya existe
+            var usuarioExistente = await _context.Usuarios
+                .AnyAsync(u => u.NombreUsuario == request.NombreUsuario || u.Email == request.Email);
+
+            if (usuarioExistente)
+            {
+                return Conflict(new { mensaje = "El usuario o email ya existe" });
+            }
+
+            // Crear nuevo usuario
+            var nuevoUsuario = new Usuario
+            {
+                NombreUsuario = request.NombreUsuario,
+                Email = request.Email,
+                PasswordHash = HashPassword(request.Password),
+                Rol = "Usuario",
+                FechaCreacion = DateTime.UtcNow,
+                Activo = true
+            };
+
+            _context.Usuarios.Add(nuevoUsuario);
+            await _context.SaveChangesAsync();
+
+            // Generar token JWT
+            var token = _jwtService.GenerarToken(nuevoUsuario);
+            var expiracion = DateTime.UtcNow.AddHours(24);
+
+            var response = new LoginResponse
+            {
+                Token = token,
+                NombreUsuario = nuevoUsuario.NombreUsuario,
+                Email = nuevoUsuario.Email,
+                Rol = nuevoUsuario.Rol,
+                Expiracion = expiracion
+            };
+
+            _logger.LogInformation($"Nuevo usuario {nuevoUsuario.NombreUsuario} registrado exitosamente");
+
+            return CreatedAtAction(nameof(Login), response);
         }
-    }
-}
+       
+
+            [HttpPost("validar-token")]
+            public IActionResult ValidarToken([FromBody] string token)
+            {
+                try
+                {
+                    if (string.IsNullOrEmpty(token))
+                    {
+                        return BadRequest(new { mensaje = "Token requerido" });
+                    }
+
+                    // Remover "Bearer " si está presente
+                    if (token.StartsWith("Bearer "))
+                    {
+                        token = token.Substring(7);
+                    }
+
+                    var esValido = _jwtService.ValidarToken(token);
+
+                    if (esValido)
+                    {
+                        var usuario = _jwtService.ObtenerUsuarioDelToken(token);
+                        var rol = _jwtService.ObtenerRolDelToken(token);
+
+                        return Ok(new
+                        {
+                            valido = true,
+                            usuario = usuario,
+                            rol = rol
+                        });
+                    }
+
+                    return Unauthorized(new { valido = false, mensaje = "Token inválido o expirado" });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error al validar token");
+                    return StatusCode(500, new { mensaje = "Error interno del servidor" });
+                }
+            }
+
+            private string HashPassword(string password)
+            {
+                using (var sha256 = SHA256.Create())
+                {
+                    var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
+                    return Convert.ToBase64String(hashedBytes);
+                }
+            }
+
+            private bool VerificarPassword(string password, string hash)
+            {
+                var passwordHash = HashPassword(password);
+                return passwordHash == hash;
+            }
+        }
